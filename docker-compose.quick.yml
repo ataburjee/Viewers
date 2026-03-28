@@ -1,0 +1,9 @@
+services:
+  ohif_quick:
+    image: nginx:alpine
+    container_name: ohif_quick
+    ports:
+      - "3001:80"
+    volumes:
+      - ./platform/app/dist:/usr/share/nginx/html
+    restart: always

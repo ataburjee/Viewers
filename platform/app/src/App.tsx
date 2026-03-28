@@ -4,7 +4,7 @@ import React, { useEffect, useState } from 'react';
 import PropTypes from 'prop-types';
 import i18n from '@ohif/i18n';
 import { I18nextProvider } from 'react-i18next';
-import { BrowserRouter, type BrowserRouterProps } from 'react-router-dom';
+import { BrowserRouter, useNavigate, type BrowserRouterProps } from 'react-router-dom';
 
 import Compose from './routes/Mode/Compose';
 import {
@@ -36,6 +36,25 @@ import appInit from './appInit.js';
 import OpenIdConnectRoutes from './utils/OpenIdConnectRoutes';
 import { ShepherdJourneyProvider } from 'react-shepherd';
 import './App.css';
+
+function ExternalAppRouteGuard() {
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    const ALLOWED_ORIGINS = ['https://chavi.ai', 'http://localhost:5173'];
+    const handleMessage = (event: MessageEvent) => {
+      if (!ALLOWED_ORIGINS.includes(event.origin)) return;
+      if (event.data?.type !== 'chavi-ping') return;
+      if (window.location.pathname !== '/local') {
+        navigate('/local', { replace: true });
+      }
+    };
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, [navigate]);
+
+  return null;
+}
 
 let commandsManager: CommandsManager,
   extensionManager: ExtensionManager,
@@ -173,6 +192,7 @@ function App({
         basename={routerBasename}
         future={routerFutureFlags}
       >
+        <ExternalAppRouteGuard />
         {authRoutes}
         {appRoutes}
       </BrowserRouter>

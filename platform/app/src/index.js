@@ -1,6 +1,7 @@
 /**
  * Entry point for development and production PWA builds.
  */
+
 import 'regenerator-runtime/runtime';
 import { createRoot } from 'react-dom/client';
 import App from './App';
@@ -21,6 +22,16 @@ export { history } from './utils/history';
 export { preserveQueryParameters, preserveQueryStrings } from './utils/preserveQueryParameters';
 
 loadDynamicConfig(window.config).then(config_json => {
+  // If this tab was opened by chavi and refreshed away from /local, redirect back
+  // before React mounts — avoids waiting for appInit.
+  if (
+    sessionStorage.getItem('chavi-session') === '1' &&
+    window.location.pathname !== '/local'
+  ) {
+    window.location.replace('/local');
+    return;
+  }
+
   // Reset Dynamic config if defined
   if (config_json !== null) {
     window.config = config_json;

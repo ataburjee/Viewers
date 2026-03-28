@@ -70,15 +70,15 @@ const InvestigationalUseDialog = ({
           <Icons.InvestigationalUse className="h-18 w-18" />
           <div className="flex flex-col">
             <div className="text-foreground text-[19px]">
-              OHIF Viewer is{' '}
+              CHAVI Viewer is{' '}
               <span className="text-highlight">{t('for investigational use only')}</span>
             </div>
             <div className="text-foreground text-[13px]">
               <span
                 className="text-primary cursor-pointer"
-                onClick={() => window.open('https://ohif.org/', '_blank')}
+                onClick={() => window.open('https://chavi.ai/', '_blank')}
               >
-                {t('Learn more about OHIF Viewer')}
+                {t('Learn more about CHAVI Viewer')}
               </span>
             </div>
           </div>

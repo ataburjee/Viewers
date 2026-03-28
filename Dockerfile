@@ -54,15 +54,16 @@ RUN npm install -g lerna@7.4.2
 ENV PATH=/usr/src/app/node_modules/.bin:$PATH
 
 # Do an initial install and then a final install
-COPY package.json yarn.lock preinstall.js lerna.json ./
-COPY --parents ./addOns/package.json ./addOns/*/*/package.json ./extensions/*/package.json ./modes/*/package.json ./platform/*/package.json ./
+COPY . .
 # Run the install before copying the rest of the files
 
 RUN bun pm cache rm
 RUN bun install
 RUN bun add ajv@8.12.0
 # Copy the local directory
-COPY --link --exclude=yarn.lock --exclude=package.json --exclude=Dockerfile . .
+# (Legacy builder doesn't support --exclude or --link)
+# We already copied everything above, or we can copy specifically.
+# Since we want to build, let's just use the current state.
 
 # Build here
 # After install it should hopefully be stable until the local directory changes

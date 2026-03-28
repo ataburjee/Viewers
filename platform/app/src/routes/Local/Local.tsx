@@ -1,5 +1,4 @@
 import React, { useEffect, useRef } from 'react';
-import classnames from 'classnames';
 import { useNavigate } from 'react-router-dom';
 import { DicomMetadataStore, MODULE_TYPES, useSystem } from '@ohif/core';
 
@@ -55,6 +54,12 @@ function Local({ modePath }: LocalProps) {
   const navigate = useNavigate();
   const dropzoneRef = useRef();
   const [dropInitiated, setDropInitiated] = React.useState(false);
+  const [receivingFromApp, setReceivingFromApp] = React.useState(false);
+  const receivingFromAppRef = useRef(false);
+  const [statusMessage, setStatusMessage] = React.useState('');
+  const openedByExternalApp = typeof window !== 'undefined' && !!window.opener;
+  const ohifReadySent = useRef(false);
+  const pendingFiles = useRef<File[]>([]);
 
   const LoadingIndicatorProgress = customizationService.getCustomization(
     'ui.loadingIndicatorProgress'
@@ -80,7 +85,7 @@ function Local({ modePath }: LocalProps) {
   );
 
   const onDrop = async acceptedFiles => {
-    const studies = await filesToStudies(acceptedFiles, dataSource);
+    const studies = await filesToStudies(acceptedFiles);
 
     const query = new URLSearchParams();
 
@@ -108,6 +113,71 @@ function Local({ modePath }: LocalProps) {
 
     navigate(`/${modePath}?${decodeURIComponent(query.toString())}`);
   };
+
+  // Handle postMessage integration with external app (chavi):
+  // 1. Respond to 'chavi-ping' with 'ohif-ready' so the other app knows OHIF is loaded.
+  // 2. Receive 'chavi-dicom-files' with File[] and load them into the viewer.
+  const ALLOWED_ORIGINS = ['https://chavi.ai', 'http://localhost:5173'];
+
+  useEffect(() => {
+    const handleMessage = async (event: MessageEvent) => {
+      if (!ALLOWED_ORIGINS.includes(event.origin)) return;
+
+      if (event.data?.type === 'chavi-ping') {
+        sessionStorage.setItem('chavi-session', '1');
+        if (!ohifReadySent.current) {
+          ohifReadySent.current = true;
+          try {
+            (event.source as Window).postMessage({ type: 'ohif-ready' }, event.origin || '*');
+          } catch (_) {}
+        }
+        return;
+      }
+
+      // Receive DICOM files from the other app (supports batched sending)
+      if (event.data?.type === 'chavi-dicom-files') {
+        const { buffers, names, files: rawFiles, done } = event.data;
+        let batch: File[] = [];
+        if (buffers?.length) {
+          batch = (buffers as ArrayBuffer[]).map(
+            (buf, i) => new File([buf], (names?.[i]) || `dicom_${i}.dcm`, { type: 'application/dicom' })
+          );
+        } else if (rawFiles?.length) {
+          batch = rawFiles;
+        }
+
+        if (batch.length > 0) {
+          pendingFiles.current.push(...batch);
+          receivingFromAppRef.current = true;
+          setReceivingFromApp(true);
+          setStatusMessage(`Receiving… ${pendingFiles.current.length} file(s) so far`);
+        }
+
+        // Process when: explicit done:true OR not batching (done is undefined = single send)
+        if (done === true || (done === undefined && pendingFiles.current.length > 0)) {
+          const allFiles = [...pendingFiles.current];
+          pendingFiles.current = [];
+
+          setStatusMessage(`Loading ${allFiles.length} DICOM file(s)…`);
+
+          try {
+            await filesToStudies(allFiles);
+            receivingFromAppRef.current = false;
+            setReceivingFromApp(false);
+            navigate('/?datasources=dicomlocal');
+          } catch (error) {
+            console.error('Error loading DICOM files from external app:', error);
+            receivingFromAppRef.current = false;
+            setReceivingFromApp(false);
+            setStatusMessage('Error loading DICOM files. Please try again.');
+          }
+        }
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, [modePath, navigate]);
 
   // Set body style
   useEffect(() => {
@@ -137,9 +207,19 @@ function Local({ modePath }: LocalProps) {
                 <Icons.OHIFLogoColorDarkBackground className="h-18" />
               </div>
               <div className="space-y-2 py-6 text-center">
-                {dropInitiated ? (
+                {receivingFromApp ? (
+                  <div className="flex flex-col items-center justify-center pt-12 space-y-4">
+                    <LoadingIndicatorProgress className={'h-full w-full bg-background'} />
+                    <p className="text-primary text-base">{statusMessage}</p>
+                  </div>
+                ) : dropInitiated ? (
                   <div className="flex flex-col items-center justify-center pt-12">
                     <LoadingIndicatorProgress className={'h-full w-full bg-background'} />
+                  </div>
+                ) : openedByExternalApp ? (
+                  <div className="flex flex-col items-center justify-center pt-12 space-y-4">
+                    <LoadingIndicatorProgress className={'h-full w-full bg-background'} />
+                    <p className="text-primary text-base">Waiting for DICOM files…</p>
                   </div>
                 ) : (
                   <div className="space-y-2">
@@ -154,10 +234,12 @@ function Local({ modePath }: LocalProps) {
                   </div>
                 )}
               </div>
-              <div className="flex justify-center gap-2 pt-4">
-                {getLoadButton(onDrop, 'Load files', false)}
-                {getLoadButton(onDrop, 'Load folders', true)}
-              </div>
+              {!openedByExternalApp && !receivingFromApp && !dropInitiated && (
+                <div className="flex justify-center gap-2 pt-4">
+                  {getLoadButton(onDrop, 'Load files', false)}
+                  {getLoadButton(onDrop, 'Load folders', true)}
+                </div>
+              )}
             </div>
           </div>
         </div>
