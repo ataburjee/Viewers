@@ -80,11 +80,11 @@ const bakedInRoutes = [
     children: Debug,
   },
   {
-    path: `/local`,
+    path: `/upload`,
     children: Local.bind(null, { modePath: '' }), // navigate to the worklist
   },
   {
-    path: `/localbasic`,
+    path: `/upload/basic`,
     children: Local.bind(null, { modePath: 'viewer/dicomlocal' }),
   },
 ];
@@ -127,11 +127,18 @@ const createRoutes = ({
     props: { children: WorkList, servicesManager, extensionManager },
   };
 
+  const StudiesRoute = {
+    path: '/studies',
+    children: DataSourceWrapper,
+    private: true,
+    props: { children: WorkList, servicesManager, extensionManager },
+  };
+
   const customRoutes = customizationService.getCustomization('routes.customRoutes');
 
   const allRoutes = [
     ...routes,
-    ...(showStudyList ? [WorkListRoute] : []),
+    ...(showStudyList ? [WorkListRoute, StudiesRoute] : [StudiesRoute]),
     ...(customRoutes?.routes || []),
     ...bakedInRoutes,
     customRoutes?.notFoundRoute || notFoundRoute,

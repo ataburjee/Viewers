@@ -4,6 +4,7 @@ import { DicomMetadataStore, MODULE_TYPES, useSystem } from '@ohif/core';
 
 import Dropzone from 'react-dropzone';
 import filesToStudies from './filesToStudies';
+import { cacheDicomFiles, getCachedDicomFiles } from './dicomFileCache';
 
 import { extensionManager } from '../../App';
 
@@ -109,9 +110,15 @@ function Local({ modePath }: LocalProps) {
 
     // Todo: navigate to work list and let user select a mode
     studies.forEach(id => query.append('StudyInstanceUIDs', id));
-    query.append('datasources', 'dicomlocal');
-
-    navigate(`/${modePath}?${decodeURIComponent(query.toString())}`);
+    const basePath = modePath ? `/${modePath}` : '/studies';
+    if (modePath) {
+      query.append('datasources', 'dicomlocal');
+      navigate(`${basePath}?${decodeURIComponent(query.toString())}`);
+    } else {
+      navigate(`${basePath}?${decodeURIComponent(query.toString())}`, {
+        state: { datasources: 'dicomlocal' },
+      });
+    }
   };
 
   // Handle postMessage integration with external app (chavi):
@@ -140,7 +147,8 @@ function Local({ modePath }: LocalProps) {
         let batch: File[] = [];
         if (buffers?.length) {
           batch = (buffers as ArrayBuffer[]).map(
-            (buf, i) => new File([buf], (names?.[i]) || `dicom_${i}.dcm`, { type: 'application/dicom' })
+            (buf, i) =>
+              new File([buf], names?.[i] || `dicom_${i}.dcm`, { type: 'application/dicom' })
           );
         } else if (rawFiles?.length) {
           batch = rawFiles;
@@ -162,9 +170,11 @@ function Local({ modePath }: LocalProps) {
 
           try {
             await filesToStudies(allFiles);
+            await cacheDicomFiles(allFiles).catch(console.error);
             receivingFromAppRef.current = false;
             setReceivingFromApp(false);
-            navigate('/?datasources=dicomlocal');
+            sessionStorage.setItem('chavi-files-loaded', '1');
+            navigate('/studies', { state: { datasources: 'dicomlocal' } });
           } catch (error) {
             console.error('Error loading DICOM files from external app:', error);
             receivingFromAppRef.current = false;
@@ -178,6 +188,45 @@ function Local({ modePath }: LocalProps) {
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
   }, [modePath, navigate]);
+
+  // When Local mounts, clear the guard flags and try to restore cached DICOM files
+  // from IndexedDB (e.g. after a page refresh that redirected back here via index.js).
+  // We delay the restore by 1.5s to give the external app time to send a chavi-ping.
+  // If a ping arrives first (ohifReadySent becomes true), we skip the cache restore
+  // because the external app will send fresh files.
+  useEffect(() => {
+    sessionStorage.removeItem('chavi-files-loaded');
+    sessionStorage.removeItem('chavi-guard-done');
+
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      if (cancelled || ohifReadySent.current) return;
+      getCachedDicomFiles()
+        .then(async cachedFiles => {
+          if (cancelled || ohifReadySent.current || cachedFiles.length === 0) return;
+          setReceivingFromApp(true);
+          setStatusMessage(`Restoring ${cachedFiles.length} cached DICOM file(s)…`);
+          try {
+            await filesToStudies(cachedFiles);
+            if (cancelled || ohifReadySent.current) return;
+            sessionStorage.setItem('chavi-files-loaded', '1');
+            navigate('/studies', { state: { datasources: 'dicomlocal' } });
+          } catch (err) {
+            console.error('Error restoring cached DICOM files:', err);
+            if (!cancelled) {
+              setReceivingFromApp(false);
+              setStatusMessage('');
+            }
+          }
+        })
+        .catch(console.error);
+    }, 1500);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, []);
 
   // Set body style
   useEffect(() => {
@@ -208,17 +257,17 @@ function Local({ modePath }: LocalProps) {
               </div>
               <div className="space-y-2 py-6 text-center">
                 {receivingFromApp ? (
-                  <div className="flex flex-col items-center justify-center pt-12 space-y-4">
-                    <LoadingIndicatorProgress className={'h-full w-full bg-background'} />
+                  <div className="flex flex-col items-center justify-center space-y-4 pt-12">
+                    <LoadingIndicatorProgress className={'bg-background h-full w-full'} />
                     <p className="text-primary text-base">{statusMessage}</p>
                   </div>
                 ) : dropInitiated ? (
                   <div className="flex flex-col items-center justify-center pt-12">
-                    <LoadingIndicatorProgress className={'h-full w-full bg-background'} />
+                    <LoadingIndicatorProgress className={'bg-background h-full w-full'} />
                   </div>
                 ) : openedByExternalApp ? (
-                  <div className="flex flex-col items-center justify-center pt-12 space-y-4">
-                    <LoadingIndicatorProgress className={'h-full w-full bg-background'} />
+                  <div className="flex flex-col items-center justify-center space-y-4 pt-12">
+                    <LoadingIndicatorProgress className={'bg-background h-full w-full'} />
                     <p className="text-primary text-base">Waiting for DICOM files…</p>
                   </div>
                 ) : (

@@ -43,10 +43,13 @@ function ExternalAppRouteGuard() {
   useEffect(() => {
     const ALLOWED_ORIGINS = ['https://chavi.ai', 'http://localhost:5173'];
     const handleMessage = (event: MessageEvent) => {
+      if (sessionStorage.getItem('chavi-files-loaded') === '1') return;
+      if (sessionStorage.getItem('chavi-guard-done') === '1') return;
       if (!ALLOWED_ORIGINS.includes(event.origin)) return;
       if (event.data?.type !== 'chavi-ping') return;
-      if (window.location.pathname !== '/local') {
-        navigate('/local', { replace: true });
+      sessionStorage.setItem('chavi-guard-done', '1');
+      if (window.location.pathname !== '/upload') {
+        navigate('/upload', { replace: true });
       }
     };
     window.addEventListener('message', handleMessage);

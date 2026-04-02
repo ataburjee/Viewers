@@ -52,7 +52,7 @@ function DataSourceWrapper(props: withAppTypes) {
 
   const getInitialDataSourceName = useCallback(() => {
     // TODO - get the variable from the props all the time...
-    let dataSourceName = lowerCaseSearchParams.get('datasources');
+    let dataSourceName = lowerCaseSearchParams.get('datasources') || location.state?.datasources;
 
     if (!dataSourceName && window.config.defaultDataSourceName) {
       return '';

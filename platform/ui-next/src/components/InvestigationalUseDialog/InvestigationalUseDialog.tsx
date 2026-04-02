@@ -78,7 +78,7 @@ const InvestigationalUseDialog = ({
                 className="text-primary cursor-pointer"
                 onClick={() => window.open('https://chavi.ai/', '_blank')}
               >
-                {t('Learn more about CHAVI Viewer')}
+                {t('Learn more about chavi.ai')}
               </span>
             </div>
           </div>
